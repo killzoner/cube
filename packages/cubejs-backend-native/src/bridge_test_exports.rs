@@ -737,7 +737,6 @@ fn invoke_cube_definition<IT: InnerTypes>(b: &NativeCubeDefinition<IT>) -> Invok
     r.record("measures", b.measures());
     r.record("dimensions", b.dimensions());
     r.record("segments", b.segments());
-    r.record("hierarchies", b.hierarchies());
     r.record("joins", b.joins());
     r.record("pre_aggregations", b.pre_aggregations());
     r.record("access_policies", b.access_policies());
@@ -1020,7 +1019,6 @@ struct CubeView {
     measure_count: usize,
     dimension_count: usize,
     segment_count: usize,
-    hierarchy_count: usize,
     join_count: usize,
     pre_aggregation_count: usize,
     access_policy_count: usize,
@@ -1042,7 +1040,6 @@ fn model_describe_inner<IT: InnerTypes>(
             measure_count: cube.measures.len(),
             dimension_count: cube.dimensions.len(),
             segment_count: cube.segments.len(),
-            hierarchy_count: cube.hierarchies.len(),
             join_count: cube.joins.len(),
             pre_aggregation_count: cube.pre_aggregations.len(),
             access_policy_count: cube.access_policies.len(),
