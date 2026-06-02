@@ -14,7 +14,7 @@ use chrono::{ParseResult, TimeZone, Utc};
 use datafusion::arrow::array::*;
 use datafusion::arrow::compute::kernels::cast_utils::string_to_timestamp_nanos;
 use datafusion::arrow::datatypes::SchemaRef;
-use datafusion::arrow::record_batch::RecordBatch;
+use datafusion::arrow::record_batch::{RecordBatch, RecordBatchOptions};
 use datafusion::cube_ext;
 use datafusion::physical_plan::ExecutionPlan;
 use datafusion::sql::parser::Statement as DFStatement;
@@ -146,7 +146,14 @@ impl QueryResult {
                 Pending::Frame(df) => {
                     let schema = df.get_schema();
                     let arrays = data::rows_to_columns(df.get_columns(), df.get_rows());
-                    let batch = RecordBatch::try_new(schema.clone(), arrays)?;
+                    // Commands like CREATE TABLE/INSERT or queue/cache writes return
+                    // results with zero columns. RecordBatch::try_new can't infer the row
+                    // count without columns, so pass it explicitly to avoid an Arrow
+                    // "must either specify a row count or at least one column" error.
+                    let options =
+                        RecordBatchOptions::new().with_row_count(Some(df.get_rows().len()));
+                    let batch =
+                        RecordBatch::try_new_with_options(schema.clone(), arrays, &options)?;
                     (schema, vec![batch])
                 }
                 Pending::Batches { schema, batches } => (schema, batches),
@@ -1944,6 +1951,25 @@ mod tests {
     use crate::table::data::{cmp_min_rows, cmp_row_key_heap};
     use crate::table::TableValue;
     use regex::Regex;
+
+    #[tokio::test]
+    async fn to_arrow_ipc_stream_zero_columns() -> Result<(), CubeError> {
+        use datafusion::arrow::ipc::reader::StreamReader;
+        use std::io::Cursor;
+
+        // Write commands (CREATE TABLE/INSERT, queue/cache writes) produce a result
+        // with zero columns. The Arrow path must not fail with
+        // "must either specify a row count or at least one column".
+        let result = QueryResult::Frame(Arc::new(DataFrame::new(vec![], vec![])));
+
+        let bytes = result.to_arrow_ipc_stream().await?;
+
+        let reader = StreamReader::try_new(Cursor::new(bytes), None)
+            .map_err(|e| CubeError::internal(e.to_string()))?;
+        assert_eq!(reader.schema().fields().len(), 0);
+
+        Ok(())
+    }
 
     #[tokio::test]
     async fn create_schema_test() -> Result<(), CubeError> {
